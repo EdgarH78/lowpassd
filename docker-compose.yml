@@ -1,0 +1,55 @@
+services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      # Host ports shifted off the default 9000/9001 to avoid collision with AtlasForge.
+      - "9100:9000"
+      - "9101:9001"
+    environment:
+      MINIO_ROOT_USER: lowpassd
+      MINIO_ROOT_PASSWORD: lowpassd-secret
+    volumes:
+      - lowpassd-minio:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until mc alias set local http://minio:9000 lowpassd lowpassd-secret >/dev/null 2>&1; do
+          echo "waiting for minio..."; sleep 1;
+        done;
+        for b in lowpassd-raw lowpassd-archive lowpassd-wiki; do
+          mc mb -p "local/$$b" || true;
+        done;
+
+  lowpassd:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: lowpassd
+      S3_SECRET_KEY: lowpassd-secret
+      S3_FORCE_PATH_STYLE: "true"
+      BUCKET_RAW: lowpassd-raw
+      BUCKET_ARCHIVE: lowpassd-archive
+      BUCKET_WIKI: lowpassd-wiki
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_FLASH_MODEL: ${GEMINI_FLASH_MODEL:-gemini-2.5-flash}
+      GEMINI_PRO_MODEL: ${GEMINI_PRO_MODEL:-gemini-2.5-pro}
+      CRON_SCHEDULE: ${CRON_SCHEDULE:-0 */6 * * *}
+      MAX_LOOKBACK_DAYS: ${MAX_LOOKBACK_DAYS:-7}
+      RUN_ON_START: ${RUN_ON_START:-true}
+      PORT: "8080"
+    depends_on:
+      - minio-init
+    restart: unless-stopped
+
+volumes:
+  lowpassd-minio:
