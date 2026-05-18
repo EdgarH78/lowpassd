@@ -16,6 +16,7 @@ export const defaultFeeds: Feed[] = [
   { slug: 'openai-news', url: 'https://openai.com/news/rss.xml' },
   { slug: 'deepmind-blog', url: 'https://deepmind.google/blog/rss.xml' },
   { slug: 'simonw', url: 'https://simonwillison.net/atom/everything/' },
+  { slug: 'addy-osmani', url: 'https://addyosmani.com/rss.xml' },
   { slug: 'import-ai', url: 'https://importai.substack.com/feed' },
   { slug: 'the-gradient', url: 'https://thegradient.pub/rss/' },
 ];
