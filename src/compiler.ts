@@ -8,12 +8,12 @@ import { getText, listObjects, moveObject, putText } from './storage.js';
 // via the response schema `enum` constraint). Articles that don't fit any
 // slug are dropped to wiki/rejected.log instead of being compiled.
 
-interface TopicDef {
+export interface TopicDef {
   slug: string;
   description: string;
 }
 
-const ALLOWLIST: TopicDef[] = [
+export const ALLOWLIST: TopicDef[] = [
   // Coding tools (per-product)
   { slug: 'claude-code',        description: 'Using/configuring Claude Code (CLI/desktop): tips, hooks, slash commands, MCP setup, agents/subagents, internals from the source-code leak.' },
   { slug: 'cursor',             description: 'Using/configuring Cursor IDE: rules, agents, prompts, workflows.' },
@@ -43,8 +43,9 @@ const ALLOWLIST: TopicDef[] = [
   { slug: 'context-engineering', description: 'USER-facing techniques for shaping the context window: CLAUDE.md, Cursor rules, retrieval/grounding strategies, /compact, session hygiene, Karpathy-style techniques. (For agents managing their OWN context → agent-context-mgmt.)' },
 ];
 
-const ALLOWED_SLUGS = ALLOWLIST.map(t => t.slug);
-const ALLOWED_SLUG_SET = new Set(ALLOWED_SLUGS);
+export const ALLOWED_SLUGS = ALLOWLIST.map(t => t.slug);
+export const ALLOWED_SLUG_SET = new Set(ALLOWED_SLUGS);
+export const TOPIC_INDEX_KEY = 'topic-index.json';
 const MAX_TOPICS_PER_ARTICLE = 3;
 const MAX_URL_RETRIES = 2;
 const URL_FETCH_TIMEOUT_MS = 10_000;
@@ -345,6 +346,21 @@ export async function compile(): Promise<CompileResult> {
     }
   }
 
+  // Phase 3.5: merge this cycle's topic→article mapping into the persisted index.
+  try {
+    const additions: Record<string, string[]> = {};
+    for (const [slug, arts] of topicToArticles) {
+      additions[slug] = arts.map(a => a.key.replace(/^raw\//, 'archive/'));
+    }
+    await mergeTopicIndex(additions);
+  } catch (err) {
+    errors.push({
+      stage: 'topic-index',
+      key: TOPIC_INDEX_KEY,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   // Phase 4: issue the daily newspaper if there's enough accepted content.
   let newspaperIssued = false;
   let newspaperStories = 0;
@@ -526,6 +542,38 @@ function collectSourceUrls(articles: RawArticle[]): Set<string> {
     }
   }
   return urls;
+}
+
+// ---- TOPIC INDEX ---------------------------------------------------------
+
+export type TopicIndex = Record<string, string[]>;
+
+export async function loadTopicIndex(): Promise<TopicIndex> {
+  const text = await getText(config.s3.buckets.wiki, TOPIC_INDEX_KEY);
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as TopicIndex;
+  } catch {
+    return {};
+  }
+}
+
+export async function saveTopicIndex(index: TopicIndex): Promise<void> {
+  await putText(
+    config.s3.buckets.wiki,
+    TOPIC_INDEX_KEY,
+    JSON.stringify(index, null, 2),
+    'application/json; charset=utf-8',
+  );
+}
+
+async function mergeTopicIndex(additions: TopicIndex): Promise<void> {
+  const existing = await loadTopicIndex();
+  for (const [slug, keys] of Object.entries(additions)) {
+    const merged = new Set([...(existing[slug] ?? []), ...keys]);
+    existing[slug] = [...merged].sort();
+  }
+  await saveTopicIndex(existing);
 }
 
 // ---- REJECTED LOG --------------------------------------------------------

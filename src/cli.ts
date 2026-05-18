@@ -1,4 +1,4 @@
-import { compile, stripUnknownWikiLinks } from './compiler.js';
+import { compile, saveTopicIndex, stripUnknownWikiLinks, type TopicIndex } from './compiler.js';
 import { config } from './config.js';
 import { ingest } from './ingest.js';
 import { generateNewspaper, saveIssue, type ArticleForNewspaper } from './newspaper.js';
@@ -46,6 +46,50 @@ async function main(): Promise<void> {
       console.log(`saved newspaper/${issue.date}.json with ${issue.stories.length} stories`);
       return;
     }
+    case 'rebuild-topic-index': {
+      // Derive topic-index.json from current wiki pages + archive contents
+      // by reverse-mapping cited URLs → archive article keys.
+      const archiveKeys = (await listObjects(config.s3.buckets.archive, 'archive/'))
+        .filter(k => k.endsWith('.md'));
+      const urlToKey = new Map<string, string>();
+      for (const k of archiveKeys) {
+        const text = await getText(config.s3.buckets.archive, k);
+        if (!text) continue;
+        const m = text.match(/^url:\s*(.+)$/m);
+        const url = m?.[1]?.trim();
+        if (url) urlToKey.set(normalizeUrl(url), k);
+      }
+
+      const wikiKeys = (await listObjects(config.s3.buckets.wiki, 'wiki/'))
+        .filter(k => k.endsWith('.md'));
+      const index: TopicIndex = {};
+      let totalMatches = 0;
+      for (const wk of wikiKeys) {
+        const slug = wk.replace(/^wiki\//, '').replace(/\.md$/, '');
+        const text = await getText(config.s3.buckets.wiki, wk);
+        if (!text) continue;
+        const urls = new Set<string>();
+        for (const m of text.matchAll(/\[[^\]]+\]\((https?:\/\/[^)\s]+)\)/g)) {
+          if (m[1]) urls.add(normalizeUrl(m[1]));
+        }
+        for (const m of text.matchAll(/<(https?:\/\/[^>\s]+)>/g)) {
+          if (m[1]) urls.add(normalizeUrl(m[1]));
+        }
+        const keys = [...urls].map(u => urlToKey.get(u)).filter((k): k is string => !!k);
+        if (keys.length > 0) {
+          index[slug] = [...new Set(keys)].sort();
+          totalMatches += keys.length;
+        }
+      }
+      await saveTopicIndex(index);
+      console.log(JSON.stringify({
+        archiveArticles: archiveKeys.length,
+        wikiPages: wikiKeys.length,
+        topicsIndexed: Object.keys(index).length,
+        articleAssociations: totalMatches,
+      }, null, 2));
+      return;
+    }
     case 'clean-wiki-links': {
       const keys = (await listObjects(config.s3.buckets.wiki, 'wiki/')).filter(k => k.endsWith('.md'));
       let cleaned = 0;
@@ -63,8 +107,19 @@ async function main(): Promise<void> {
       return;
     }
     default:
-      console.error('usage: cli.ts <ingest|compile|cycle|newspaper-from-archive|clean-wiki-links>');
+      console.error('usage: cli.ts <ingest|compile|cycle|newspaper-from-archive|rebuild-topic-index|clean-wiki-links>');
       process.exit(1);
+  }
+}
+
+function normalizeUrl(u: string): string {
+  try {
+    const url = new URL(u);
+    const host = url.host.toLowerCase();
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    return `${url.protocol}//${host}${path}${url.search}${url.hash}`;
+  } catch {
+    return u;
   }
 }
 
