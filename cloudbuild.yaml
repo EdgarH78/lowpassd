@@ -47,7 +47,7 @@ steps:
       - --min-instances=0
       - --max-instances=1
       - --timeout=3600
-      - --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,BUCKET_RAW=${_BUCKET_RAW},BUCKET_ARCHIVE=${_BUCKET_ARCHIVE},BUCKET_WIKI=${_BUCKET_WIKI},RUN_ON_START=false
+      - --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,BUCKET_RAW=${_BUCKET_RAW},BUCKET_ARCHIVE=${_BUCKET_ARCHIVE},BUCKET_WIKI=${_BUCKET_WIKI},RUN_ON_START=false,BASE_PATH=/lowpassd
       - --set-secrets=GEMINI_API_KEY=GOOGLE_AI_KEY:latest
     waitFor: [push]
 

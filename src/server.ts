@@ -14,6 +14,11 @@ import {
 import { cycle, isRunning } from './orchestrator.js';
 import { getText, listObjects } from './storage.js';
 
+// Internal links are prefixed with this so navigation stays under the LB path
+// (e.g. /lowpassd). Empty when served at root. The app itself routes at root —
+// the load balancer strips the prefix before the request reaches us.
+const BASE = config.server.basePath;
+
 export function createApp(): Hono {
   const app = new Hono();
 
@@ -26,12 +31,12 @@ export function createApp(): Hono {
       .map(k => k.replace(/^wiki\//, '').replace(/\.md$/, ''))
       .sort();
     const list = pages.length
-      ? `<ul>${pages.map(p => `<li><a href="/wiki/${escapeAttr(p)}">${escapeHtml(p)}</a></li>`).join('')}</ul>`
+      ? `<ul>${pages.map(p => `<li><a href="${BASE}/wiki/${escapeAttr(p)}">${escapeHtml(p)}</a></li>`).join('')}</ul>`
       : '<p><em>No pages yet. Run a compile cycle to populate the wiki.</em></p>';
     const body = `
       <h1>lowpassd</h1>
       <p>A high-signal AI knowledge wiki, compiled by Gemini from RSS feeds.</p>
-      <p><a href="/newspaper"><strong>The Lowpass Dispatch</strong> (daily newspaper)</a> · <a href="/chat">chat</a> · <a href="/trigger" onclick="event.preventDefault();fetch('/trigger',{method:'POST'}).then(r=>r.json()).then(j=>alert(JSON.stringify(j)))">Run cycle now</a> · <a href="/status">status</a></p>
+      <p><a href="${BASE}/newspaper"><strong>The Lowpass Dispatch</strong> (daily newspaper)</a> · <a href="${BASE}/chat">chat</a> · <a href="${BASE}/trigger" onclick="event.preventDefault();fetch('${BASE}/trigger',{method:'POST'}).then(r=>r.json()).then(j=>alert(JSON.stringify(j)))">Run cycle now</a> · <a href="${BASE}/status">status</a></p>
       <h2>Pages (${pages.length})</h2>
       ${list}
     `;
@@ -51,7 +56,7 @@ export function createApp(): Hono {
       // Resolve [[slug]] / [[slug|alias]] wiki-links to internal routes.
       .replace(
         /\[\[([a-z0-9-]+)(?:\|([^\]]+))?\]\]/g,
-        (_m, target: string, alias?: string) => `[${alias ?? target}](/wiki/${target})`,
+        (_m, target: string, alias?: string) => `[${alias ?? target}](${BASE}/wiki/${target})`,
       );
     const html = await marked.parse(linked);
     return c.html(layout(slug, html));
@@ -129,7 +134,20 @@ export function createApp(): Hono {
 
 export function startServer(): void {
   const app = createApp();
-  const server = serve({ fetch: app.fetch, port: config.server.port });
+  // The forgerealm load balancer strips the /lowpassd prefix via
+  // pathPrefixRewrite to "/", which can leave a doubled leading slash
+  // (e.g. /lowpassd/wiki/x -> //wiki/x). Collapse repeated slashes before Hono
+  // routes so those paths still match. No-op when served at root.
+  const fetchHandler: typeof app.fetch = (request, ...rest) => {
+    const url = new URL(request.url);
+    const collapsed = url.pathname.replace(/\/{2,}/g, '/');
+    if (collapsed !== url.pathname) {
+      url.pathname = collapsed;
+      request = new Request(url, request);
+    }
+    return app.fetch(request, ...rest);
+  };
+  const server = serve({ fetch: fetchHandler, port: config.server.port });
   // Node's default requestTimeout is 5min, which would abort a long /trigger
   // compile cycle. Disable it here and let Cloud Run's --timeout bound requests.
   const node = server as { requestTimeout?: number; headersTimeout?: number };
@@ -153,7 +171,7 @@ function layout(title: string, body: string): string {
   nav { margin-bottom: 2rem; font-size: 0.9em; }
   ul { padding-left: 1.4em; }
 </style></head>
-<body><nav><a href="/">← index</a></nav>${body}</body></html>`;
+<body><nav><a href="${BASE}/">← index</a></nav>${body}</body></html>`;
 }
 
 function escapeHtml(s: string): string {
@@ -219,8 +237,8 @@ const CHAT_UI_HTML = `<!doctype html>
 </head>
 <body>
 <nav>
-  <a href="/">← wiki</a>
-  <a href="/newspaper">newspaper</a>
+  <a href="${BASE}/">← wiki</a>
+  <a href="${BASE}/newspaper">newspaper</a>
 </nav>
 <h1>chat with lowpassd</h1>
 <p class="hint">Ask about anything in the wiki: topics, recent articles, who's saying what. The agent navigates the wiki for you; tool calls are visible below each answer.</p>
@@ -299,7 +317,7 @@ const CHAT_UI_HTML = `<!doctype html>
     window.scrollTo({ top: document.body.scrollHeight });
 
     try {
-      const res = await fetch('/chat/api', {
+      const res = await fetch('${BASE}/chat/api', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ history }),

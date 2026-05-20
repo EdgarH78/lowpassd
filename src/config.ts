@@ -39,5 +39,10 @@ export const config = {
   },
   server: {
     port: num(process.env.PORT, 8080),
+    // Path prefix the app is served under (e.g. "/lowpassd" behind the
+    // forgerealm load balancer). Empty for local/root serving. Used to prefix
+    // all internal links so navigation stays under the prefix. Normalized to
+    // have no trailing slash.
+    basePath: (process.env.BASE_PATH ?? '').replace(/\/+$/, ''),
   },
 } as const;

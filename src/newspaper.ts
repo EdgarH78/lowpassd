@@ -2,6 +2,10 @@ import { config } from './config.js';
 import { generateJson } from './llm.js';
 import { getText, listObjects, putText } from './storage.js';
 
+// Prefix for internal links so navigation stays under the LB path (e.g.
+// /lowpassd). Empty when served at root.
+const BASE = config.server.basePath;
+
 // ---- Types ---------------------------------------------------------------
 
 export interface NewspaperSource {
@@ -167,7 +171,7 @@ export function renderIssueHtml(issue: NewspaperIssue, opts?: { archives?: strin
     ? `<nav class="archives"><span class="archive-label">Past issues:</span> ${opts.archives
         .filter(d => d !== issue.date)
         .slice(0, 7)
-        .map(d => `<a href="/newspaper/${d}">${d}</a>`)
+        .map(d => `<a href="${BASE}/newspaper/${d}">${d}</a>`)
         .join(' · ')}</nav>`
     : '';
 
@@ -184,7 +188,7 @@ ${NEWSPAPER_CSS}
 </style>
 </head>
 <body>
-  <nav class="topnav"><a href="/">← wiki</a> <a href="/newspaper/archives">archives</a></nav>
+  <nav class="topnav"><a href="${BASE}/">← wiki</a> <a href="${BASE}/newspaper/archives">archives</a></nav>
   <header class="masthead">
     <h1>The Lowpass Dispatch</h1>
     <div class="rules"></div>
@@ -278,7 +282,7 @@ export function renderArchivesHtml(dates: string[]): string {
 <style>${NEWSPAPER_CSS}</style>
 </head>
 <body>
-  <nav class="topnav"><a href="/">← wiki</a> <a href="/newspaper">latest issue</a></nav>
+  <nav class="topnav"><a href="${BASE}/">← wiki</a> <a href="${BASE}/newspaper">latest issue</a></nav>
   <header class="masthead">
     <h1>The Lowpass Dispatch</h1>
     <div class="rules"></div>
@@ -287,7 +291,7 @@ export function renderArchivesHtml(dates: string[]): string {
   <section class="archive-list">
     ${dates.length === 0
       ? '<p><em>No issues yet.</em></p>'
-      : `<ul>${dates.map(d => `<li><a href="/newspaper/${d}">${formatDateLong(d)}</a></li>`).join('')}</ul>`}
+      : `<ul>${dates.map(d => `<li><a href="${BASE}/newspaper/${d}">${formatDateLong(d)}</a></li>`).join('')}</ul>`}
   </section>
 </body></html>`;
 }
@@ -300,7 +304,7 @@ export function renderEmptyHtml(): string {
 <style>${NEWSPAPER_CSS}</style>
 </head>
 <body>
-  <nav class="topnav"><a href="/">← wiki</a></nav>
+  <nav class="topnav"><a href="${BASE}/">← wiki</a></nav>
   <header class="masthead">
     <h1>The Lowpass Dispatch</h1>
     <div class="rules"></div>
