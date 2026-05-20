@@ -12,12 +12,12 @@ function num(v: string | undefined, fallback: number): number {
 }
 
 export const config = {
-  s3: {
-    endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9100',
-    region: process.env.S3_REGION ?? 'us-east-1',
-    accessKey: process.env.S3_ACCESS_KEY ?? 'lowpassd',
-    secretKey: process.env.S3_SECRET_KEY ?? 'lowpassd-secret',
-    forcePathStyle: bool(process.env.S3_FORCE_PATH_STYLE, true),
+  storage: {
+    // In prod, the Storage client authenticates as the Cloud Run runtime
+    // service account via ADC. Locally, STORAGE_EMULATOR_HOST points the
+    // client at the fake-gcs-server container (no credentials needed).
+    projectId: process.env.GOOGLE_CLOUD_PROJECT,
+    emulatorHost: process.env.STORAGE_EMULATOR_HOST,
     buckets: {
       raw: process.env.BUCKET_RAW ?? 'lowpassd-raw',
       archive: process.env.BUCKET_ARCHIVE ?? 'lowpassd-archive',
@@ -33,6 +33,9 @@ export const config = {
     cron: process.env.CRON_SCHEDULE ?? '0 */6 * * *',
     maxLookbackDays: num(process.env.MAX_LOOKBACK_DAYS, 7),
     runOnStart: bool(process.env.RUN_ON_START, true),
+    // Cap raw articles compiled per cycle so a run finishes within Cloud Run's
+    // request timeout. Oldest-first; a large backlog drains over several runs.
+    maxArticlesPerCycle: num(process.env.MAX_ARTICLES_PER_CYCLE, 150),
   },
   server: {
     port: num(process.env.PORT, 8080),

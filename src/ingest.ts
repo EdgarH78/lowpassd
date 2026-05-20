@@ -69,12 +69,12 @@ async function ingestFeed(
     if (publishedMs > newestSeenMs) newestSeenMs = publishedMs;
 
     const key = articleKey(feed, item, publishedMs);
-    if (await objectExists(config.s3.buckets.raw, key)) {
+    if (await objectExists(config.storage.buckets.raw, key)) {
       skipped++;
       continue;
     }
     const article = renderArticle(feed, item);
-    await putText(config.s3.buckets.raw, key, article);
+    await putText(config.storage.buckets.raw, key, article);
     fetched++;
   }
 

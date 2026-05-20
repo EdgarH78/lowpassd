@@ -218,9 +218,17 @@ export interface CompileResult {
 const NEWSPAPER_MIN_ARTICLES = 5;
 
 export async function compile(): Promise<CompileResult> {
-  const rawKeys = (await listObjects(config.s3.buckets.raw, 'raw/'))
+  const allRawKeys = (await listObjects(config.storage.buckets.raw, 'raw/'))
     .filter(k => k.endsWith('.md'));
   const errors: CompileResult['errors'] = [];
+
+  // Process oldest-first (keys sort chronologically: raw/YYYY-MM-DD/...) and
+  // cap per cycle so the run finishes within Cloud Run's request timeout. A
+  // large backlog drains over successive cycles; each batch is archived below.
+  const rawKeys = allRawKeys.slice(0, config.orchestrator.maxArticlesPerCycle);
+  if (allRawKeys.length > rawKeys.length) {
+    console.log(`[compile] backlog ${allRawKeys.length}, processing ${rawKeys.length} this cycle`);
+  }
 
   if (rawKeys.length === 0) {
     return {
@@ -238,7 +246,7 @@ export async function compile(): Promise<CompileResult> {
 
   const articles: RawArticle[] = [];
   for (const key of rawKeys) {
-    const text = await getText(config.s3.buckets.raw, key);
+    const text = await getText(config.storage.buckets.raw, key);
     if (!text) continue;
     articles.push(parseArticle(key, text));
   }
@@ -302,7 +310,7 @@ export async function compile(): Promise<CompileResult> {
 
   for (const [slug, topicArticles] of topicToArticles) {
     const wikiKey = `wiki/${slug}.md`;
-    const existing = await getText(config.s3.buckets.wiki, wikiKey);
+    const existing = await getText(config.storage.buckets.wiki, wikiKey);
     const tier: Tier = topicArticles.some(a => a.dense) ? 'pro' : 'flash';
     const sourceUrls = collectSourceUrls(topicArticles);
 
@@ -321,7 +329,7 @@ export async function compile(): Promise<CompileResult> {
       });
       urlsFixedByRetry += result.fixedByRetry;
       urlsStrippedAsFallback += result.strippedAsFallback;
-      await putText(config.s3.buckets.wiki, wikiKey, result.content);
+      await putText(config.storage.buckets.wiki, wikiKey, result.content);
       pagesWritten++;
     } catch (err) {
       errors.push({
@@ -336,7 +344,7 @@ export async function compile(): Promise<CompileResult> {
   for (const article of articles) {
     const archiveKey = article.key.replace(/^raw\//, 'archive/');
     try {
-      await moveObject(config.s3.buckets.raw, article.key, config.s3.buckets.archive, archiveKey);
+      await moveObject(config.storage.buckets.raw, article.key, config.storage.buckets.archive, archiveKey);
     } catch (err) {
       errors.push({
         stage: 'archive',
@@ -549,7 +557,7 @@ function collectSourceUrls(articles: RawArticle[]): Set<string> {
 export type TopicIndex = Record<string, string[]>;
 
 export async function loadTopicIndex(): Promise<TopicIndex> {
-  const text = await getText(config.s3.buckets.wiki, TOPIC_INDEX_KEY);
+  const text = await getText(config.storage.buckets.wiki, TOPIC_INDEX_KEY);
   if (!text) return {};
   try {
     return JSON.parse(text) as TopicIndex;
@@ -560,7 +568,7 @@ export async function loadTopicIndex(): Promise<TopicIndex> {
 
 export async function saveTopicIndex(index: TopicIndex): Promise<void> {
   await putText(
-    config.s3.buckets.wiki,
+    config.storage.buckets.wiki,
     TOPIC_INDEX_KEY,
     JSON.stringify(index, null, 2),
     'application/json; charset=utf-8',
@@ -587,12 +595,12 @@ interface RejectedEntry {
 
 async function appendRejectedLog(entries: RejectedEntry[]): Promise<void> {
   const key = 'rejected.log';
-  const existing = (await getText(config.s3.buckets.wiki, key)) ?? '';
+  const existing = (await getText(config.storage.buckets.wiki, key)) ?? '';
   const lines = entries
     .map(e => `${e.date}\t${e.feed}\t${JSON.stringify(e.title)}\tsuggested:${e.suggestedSlug || '(none)'}`)
     .join('\n');
   const body = existing ? `${existing.trimEnd()}\n${lines}\n` : `${lines}\n`;
-  await putText(config.s3.buckets.wiki, key, body, 'text/plain; charset=utf-8');
+  await putText(config.storage.buckets.wiki, key, body, 'text/plain; charset=utf-8');
 }
 
 // ---- PARSING / HELPERS ---------------------------------------------------

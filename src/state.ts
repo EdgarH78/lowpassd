@@ -10,7 +10,7 @@ export interface FeedCursor {
 export type State = Record<string, FeedCursor>;
 
 export async function loadState(): Promise<State> {
-  const raw = await getText(config.s3.buckets.raw, STATE_KEY);
+  const raw = await getText(config.storage.buckets.raw, STATE_KEY);
   if (!raw) return {};
   try {
     return JSON.parse(raw) as State;
@@ -21,7 +21,7 @@ export async function loadState(): Promise<State> {
 
 export async function saveState(state: State): Promise<void> {
   await putText(
-    config.s3.buckets.raw,
+    config.storage.buckets.raw,
     STATE_KEY,
     JSON.stringify(state, null, 2),
     'application/json; charset=utf-8',

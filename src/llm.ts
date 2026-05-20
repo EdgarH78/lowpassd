@@ -2,6 +2,8 @@ import { config } from './config.js';
 
 export type Tier = 'flash' | 'pro';
 
+const GEMINI_FETCH_TIMEOUT_MS = 120_000;
+
 interface GeminiPart { text?: string }
 interface GeminiContent { parts?: GeminiPart[] }
 interface GeminiCandidate { content?: GeminiContent }
@@ -36,6 +38,7 @@ async function callGemini(args: CallArgs): Promise<string> {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(GEMINI_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -131,6 +134,7 @@ export async function generateContentWithTools(args: {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(GEMINI_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const text = await res.text();

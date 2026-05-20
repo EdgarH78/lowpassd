@@ -20,7 +20,7 @@ export function createApp(): Hono {
   app.get('/health', c => c.text('ok'));
 
   app.get('/', async c => {
-    const keys = await listObjects(config.s3.buckets.wiki, 'wiki/');
+    const keys = await listObjects(config.storage.buckets.wiki, 'wiki/');
     const pages = keys
       .filter(k => k.endsWith('.md'))
       .map(k => k.replace(/^wiki\//, '').replace(/\.md$/, ''))
@@ -40,7 +40,7 @@ export function createApp(): Hono {
 
   app.get('/wiki/:slug', async c => {
     const slug = c.req.param('slug');
-    const md = await getText(config.s3.buckets.wiki, `wiki/${slug}.md`);
+    const md = await getText(config.storage.buckets.wiki, `wiki/${slug}.md`);
     if (!md) {
       return c.html(layout(slug, `<h1>${escapeHtml(slug)}</h1><p>Page not found.</p>`), 404);
     }
@@ -110,12 +110,18 @@ export function createApp(): Hono {
 
   app.get('/status', c => c.json({ running: isRunning() }));
 
-  app.post('/trigger', c => {
+  // Synchronous: the cycle runs to completion *during* this request. On Cloud
+  // Run with scale-to-zero, CPU is throttled once the response is sent, so a
+  // fire-and-forget cycle would stall. Cloud Scheduler POSTs here every 6h and
+  // holds the connection until the cycle finishes. The isRunning() guard makes
+  // a Scheduler retry (e.g. on deadline) safe — it returns 409 immediately.
+  app.post('/trigger', async c => {
     if (isRunning()) {
       return c.json({ status: 'already-running' }, 409);
     }
-    void cycle().then(r => console.log('[trigger] cycle result', r));
-    return c.json({ status: 'started' });
+    const result = await cycle();
+    console.log('[trigger] cycle result', result);
+    return c.json(result, result.ok ? 200 : 500);
   });
 
   return app;
@@ -123,7 +129,12 @@ export function createApp(): Hono {
 
 export function startServer(): void {
   const app = createApp();
-  serve({ fetch: app.fetch, port: config.server.port });
+  const server = serve({ fetch: app.fetch, port: config.server.port });
+  // Node's default requestTimeout is 5min, which would abort a long /trigger
+  // compile cycle. Disable it here and let Cloud Run's --timeout bound requests.
+  const node = server as { requestTimeout?: number; headersTimeout?: number };
+  node.requestTimeout = 0;
+  node.headersTimeout = 0;
   console.log(`[server] listening on http://0.0.0.0:${config.server.port}`);
 }
 

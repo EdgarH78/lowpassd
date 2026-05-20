@@ -26,11 +26,11 @@ async function main(): Promise<void> {
     }
     case 'newspaper-from-archive': {
       const rejectedTitles = await loadRejectedTitles();
-      const archiveKeys = (await listObjects(config.s3.buckets.archive, 'archive/'))
+      const archiveKeys = (await listObjects(config.storage.buckets.archive, 'archive/'))
         .filter(k => k.endsWith('.md'));
       const articles: ArticleForNewspaper[] = [];
       for (const key of archiveKeys) {
-        const text = await getText(config.s3.buckets.archive, key);
+        const text = await getText(config.storage.buckets.archive, key);
         if (!text) continue;
         const parsed = parseArchivedArticle(text);
         if (rejectedTitles.has(parsed.title)) continue;
@@ -49,24 +49,24 @@ async function main(): Promise<void> {
     case 'rebuild-topic-index': {
       // Derive topic-index.json from current wiki pages + archive contents
       // by reverse-mapping cited URLs → archive article keys.
-      const archiveKeys = (await listObjects(config.s3.buckets.archive, 'archive/'))
+      const archiveKeys = (await listObjects(config.storage.buckets.archive, 'archive/'))
         .filter(k => k.endsWith('.md'));
       const urlToKey = new Map<string, string>();
       for (const k of archiveKeys) {
-        const text = await getText(config.s3.buckets.archive, k);
+        const text = await getText(config.storage.buckets.archive, k);
         if (!text) continue;
         const m = text.match(/^url:\s*(.+)$/m);
         const url = m?.[1]?.trim();
         if (url) urlToKey.set(normalizeUrl(url), k);
       }
 
-      const wikiKeys = (await listObjects(config.s3.buckets.wiki, 'wiki/'))
+      const wikiKeys = (await listObjects(config.storage.buckets.wiki, 'wiki/'))
         .filter(k => k.endsWith('.md'));
       const index: TopicIndex = {};
       let totalMatches = 0;
       for (const wk of wikiKeys) {
         const slug = wk.replace(/^wiki\//, '').replace(/\.md$/, '');
-        const text = await getText(config.s3.buckets.wiki, wk);
+        const text = await getText(config.storage.buckets.wiki, wk);
         if (!text) continue;
         const urls = new Set<string>();
         for (const m of text.matchAll(/\[[^\]]+\]\((https?:\/\/[^)\s]+)\)/g)) {
@@ -91,14 +91,14 @@ async function main(): Promise<void> {
       return;
     }
     case 'clean-wiki-links': {
-      const keys = (await listObjects(config.s3.buckets.wiki, 'wiki/')).filter(k => k.endsWith('.md'));
+      const keys = (await listObjects(config.storage.buckets.wiki, 'wiki/')).filter(k => k.endsWith('.md'));
       let cleaned = 0;
       for (const key of keys) {
-        const text = await getText(config.s3.buckets.wiki, key);
+        const text = await getText(config.storage.buckets.wiki, key);
         if (!text) continue;
         const next = stripUnknownWikiLinks(text);
         if (next !== text) {
-          await putText(config.s3.buckets.wiki, key, next);
+          await putText(config.storage.buckets.wiki, key, next);
           cleaned++;
           console.log(`cleaned ${key}`);
         }
@@ -124,7 +124,7 @@ function normalizeUrl(u: string): string {
 }
 
 async function loadRejectedTitles(): Promise<Set<string>> {
-  const text = await getText(config.s3.buckets.wiki, 'rejected.log');
+  const text = await getText(config.storage.buckets.wiki, 'rejected.log');
   if (!text) return new Set();
   const titles = new Set<string>();
   for (const line of text.split('\n')) {

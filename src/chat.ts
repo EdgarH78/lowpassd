@@ -132,7 +132,7 @@ async function navigate(args: NavigateArgs): Promise<NavigateResult> {
       hasPage: false,
     };
     if (validTopics.includes(def.slug)) {
-      const page = await getText(config.s3.buckets.wiki, `wiki/${def.slug}.md`);
+      const page = await getText(config.storage.buckets.wiki, `wiki/${def.slug}.md`);
       entry.hasPage = page !== null;
       if (page !== null) entry.pageContent = page;
     } else {
@@ -167,7 +167,7 @@ async function navigate(args: NavigateArgs): Promise<NavigateResult> {
 
 async function pageExists(slug: string): Promise<boolean> {
   // Cheap: just see if any object exists at the key prefix.
-  const keys = await listObjects(config.s3.buckets.wiki, `wiki/${slug}.md`);
+  const keys = await listObjects(config.storage.buckets.wiki, `wiki/${slug}.md`);
   return keys.length > 0;
 }
 
@@ -190,13 +190,13 @@ async function loadArticles(args: {
     }
     if (!indexedAny) {
       // Fall back to all archive (the topic index may be empty for new installs).
-      candidateKeys = (await listObjects(config.s3.buckets.archive, 'archive/'))
+      candidateKeys = (await listObjects(config.storage.buckets.archive, 'archive/'))
         .filter(k => k.endsWith('.md'));
     } else {
       candidateKeys = [...set];
     }
   } else {
-    candidateKeys = (await listObjects(config.s3.buckets.archive, 'archive/'))
+    candidateKeys = (await listObjects(config.storage.buckets.archive, 'archive/'))
       .filter(k => k.endsWith('.md'));
   }
 
@@ -216,7 +216,7 @@ async function loadArticles(args: {
 
   const out: ArticleEntry[] = [];
   for (const key of slice) {
-    const text = await getText(config.s3.buckets.archive, key);
+    const text = await getText(config.storage.buckets.archive, key);
     if (!text) continue;
     const parsed = parseArticle(text);
     out.push({

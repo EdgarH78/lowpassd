@@ -1,0 +1,61 @@
+# Cloud Build config for lowpassd — builds and deploys the single service to
+# Cloud Run on push to main. Auth via Workload Identity Federation (reuses the
+# scryforge-ci-cd service account / github-actions pool).
+#
+# Storage: native GCS via the runtime service account (keyless ADC).
+# Cron: scale-to-zero; a Cloud Scheduler job POSTs /trigger every 6h.
+
+substitutions:
+  _REGION: us-central1
+  _SERVICE: lowpassd
+  _AR_REPO: lowpassd
+  _RUNTIME_SA: lowpassd-run@scryforge.iam.gserviceaccount.com
+  _BUCKET_RAW: lowpassd-raw
+  _BUCKET_ARCHIVE: lowpassd-archive
+  _BUCKET_WIKI: lowpassd-wiki
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:${SHORT_SHA}
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags, '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}']
+    waitFor: [build]
+
+  - id: deploy
+    name: gcr.io/cloud-builders/gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:${SHORT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --service-account=${_RUNTIME_SA}
+      - --port=8080
+      - --memory=512Mi
+      - --cpu=1
+      - --min-instances=0
+      - --max-instances=1
+      - --timeout=3600
+      - --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,BUCKET_RAW=${_BUCKET_RAW},BUCKET_ARCHIVE=${_BUCKET_ARCHIVE},BUCKET_WIKI=${_BUCKET_WIKI},RUN_ON_START=false
+      - --set-secrets=GEMINI_API_KEY=GOOGLE_AI_KEY:latest
+    waitFor: [push]
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s

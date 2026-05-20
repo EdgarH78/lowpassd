@@ -124,7 +124,7 @@ const NEWSPAPER_PREFIX = 'newspaper/';
 export async function saveIssue(issue: NewspaperIssue): Promise<string> {
   const key = `${NEWSPAPER_PREFIX}${issue.date}.json`;
   await putText(
-    config.s3.buckets.wiki,
+    config.storage.buckets.wiki,
     key,
     JSON.stringify(issue, null, 2),
     'application/json; charset=utf-8',
@@ -139,7 +139,7 @@ export async function loadLatestIssue(): Promise<NewspaperIssue | null> {
 }
 
 export async function loadIssueByDate(date: string): Promise<NewspaperIssue | null> {
-  const text = await getText(config.s3.buckets.wiki, `${NEWSPAPER_PREFIX}${date}.json`);
+  const text = await getText(config.storage.buckets.wiki, `${NEWSPAPER_PREFIX}${date}.json`);
   if (!text) return null;
   try {
     return JSON.parse(text) as NewspaperIssue;
@@ -149,7 +149,7 @@ export async function loadIssueByDate(date: string): Promise<NewspaperIssue | nu
 }
 
 export async function listIssueDates(): Promise<string[]> {
-  const keys = await listObjects(config.s3.buckets.wiki, NEWSPAPER_PREFIX);
+  const keys = await listObjects(config.storage.buckets.wiki, NEWSPAPER_PREFIX);
   return keys
     .filter(k => k.endsWith('.json'))
     .map(k => k.replace(NEWSPAPER_PREFIX, '').replace(/\.json$/, ''))
