@@ -1,14 +1,11 @@
 export interface Feed {
   slug: string;
   url: string;
-  // dense=true routes articles from this feed to the Pro tier (e.g. arXiv papers).
+  // dense=true routes articles from this feed to the Pro tier (denser, research-heavy sources).
   dense?: boolean;
 }
 
 export const defaultFeeds: Feed[] = [
-  { slug: 'arxiv-cs-lg', url: 'http://export.arxiv.org/rss/cs.LG', dense: true },
-  { slug: 'arxiv-cs-cl', url: 'http://export.arxiv.org/rss/cs.CL', dense: true },
-  { slug: 'arxiv-cs-ai', url: 'http://export.arxiv.org/rss/cs.AI', dense: true },
   // Hugging Face has no official RSS; this is the community-maintained takara.ai feed.
   { slug: 'huggingface-papers', url: 'https://papers.takara.ai/api/feed', dense: true },
   // Anthropic has no official RSS; this is a community-maintained scraper.
