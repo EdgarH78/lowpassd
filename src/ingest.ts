@@ -3,6 +3,7 @@ import Parser from 'rss-parser';
 import TurndownService from 'turndown';
 import { config } from './config.js';
 import { defaultFeeds, type Feed } from './feeds.js';
+import { prefilterRelevant } from './prefilter.js';
 import { objectExists, putText } from './storage.js';
 import { loadState, saveState, type State } from './state.js';
 
@@ -13,6 +14,8 @@ export interface IngestResult {
   feedsAttempted: number;
   articlesFetched: number;
   articlesSkippedExisting: number;
+  // Candidates dropped by title/abstract triage on prefilter feeds (arXiv).
+  articlesPrefiltered: number;
   errors: { feed: string; error: string }[];
 }
 
@@ -24,6 +27,7 @@ export async function ingest(feeds: Feed[] = defaultFeeds): Promise<IngestResult
 
   let articlesFetched = 0;
   let articlesSkippedExisting = 0;
+  let articlesPrefiltered = 0;
   const errors: IngestResult['errors'] = [];
 
   for (const feed of feeds) {
@@ -32,6 +36,7 @@ export async function ingest(feeds: Feed[] = defaultFeeds): Promise<IngestResult
       const result = await ingestFeed(feed, parsed.items, state, earliestAllowed, now);
       articlesFetched += result.fetched;
       articlesSkippedExisting += result.skipped;
+      articlesPrefiltered += result.prefiltered;
     } catch (err) {
       errors.push({
         feed: feed.slug,
@@ -45,6 +50,7 @@ export async function ingest(feeds: Feed[] = defaultFeeds): Promise<IngestResult
     feedsAttempted: feeds.length,
     articlesFetched,
     articlesSkippedExisting,
+    articlesPrefiltered,
     errors,
   };
 }
@@ -55,13 +61,16 @@ async function ingestFeed(
   state: State,
   earliestAllowed: number,
   now: number,
-): Promise<{ fetched: number; skipped: number }> {
+): Promise<{ fetched: number; skipped: number; prefiltered: number }> {
   const lastIso = state[feed.slug]?.lastPublishedIso;
   const lastMs = lastIso ? Date.parse(lastIso) : 0;
   let newestSeenMs = lastMs;
-  let fetched = 0;
   let skipped = 0;
 
+  // First pass: collect the new, in-window, not-yet-stored items. The cursor
+  // advances over every item we see (including ones we'll later drop), so a
+  // prefiltered-out paper is never reconsidered on a future run.
+  const candidates: { item: Parser.Item; key: string }[] = [];
   for (const item of items) {
     const publishedMs = parseItemDate(item) ?? now;
     if (publishedMs <= lastMs) continue;
@@ -73,15 +82,39 @@ async function ingestFeed(
       skipped++;
       continue;
     }
-    const article = renderArticle(feed, item);
-    await putText(config.storage.buckets.raw, key, article);
-    fetched++;
+    candidates.push({ item, key });
+  }
+
+  // For high-volume feeds, triage by title+abstract before storing so we don't
+  // ingest (and later pay to categorize) hundreds of off-topic papers.
+  let toStore = candidates;
+  let prefiltered = 0;
+  if (feed.prefilter && candidates.length > 0) {
+    const keep = await prefilterRelevant(
+      candidates.map(c => ({
+        title: (c.item.title ?? '').replace(/\s+/g, ' ').trim(),
+        abstract: itemAbstract(c.item),
+      })),
+    );
+    toStore = candidates.filter((_, i) => keep.has(i));
+    prefiltered = candidates.length - toStore.length;
+    console.log(
+      `[ingest] ${feed.slug}: prefilter kept ${toStore.length}/${candidates.length}`,
+    );
+  }
+
+  for (const { item, key } of toStore) {
+    await putText(config.storage.buckets.raw, key, renderArticle(feed, item));
   }
 
   if (newestSeenMs > lastMs) {
     state[feed.slug] = { lastPublishedIso: new Date(newestSeenMs).toISOString() };
   }
-  return { fetched, skipped };
+  return { fetched: toStore.length, skipped, prefiltered };
+}
+
+function itemAbstract(item: Parser.Item): string {
+  return (item.contentSnippet ?? item.summary ?? item.content ?? '').trim();
 }
 
 function parseItemDate(item: Parser.Item): number | null {
