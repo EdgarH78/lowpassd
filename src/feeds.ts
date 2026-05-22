@@ -21,6 +21,16 @@ export const defaultFeeds: Feed[] = [
   { slug: 'addy-osmani', url: 'https://addyosmani.com/rss.xml' },
   { slug: 'import-ai', url: 'https://importai.substack.com/feed' },
   { slug: 'the-gradient', url: 'https://thegradient.pub/rss/' },
+
+  // Agent-framework providers. LangChain's blog proper, Mastra, BAML, Pydantic
+  // AI and Haystack expose no RSS (JS marketing sites), so they can't be added
+  // without a scraper. These are the ones with working official feeds:
+  // LangChain ships product/LangGraph news via its changelog (the blog has no feed).
+  { slug: 'langchain-changelog', url: 'https://changelog.langchain.com/feed' },
+  { slug: 'crewai', url: 'https://blog.crewai.com/rss/' },
+  // Microsoft Agent Framework — the active successor to AutoGen.
+  { slug: 'ms-agent-framework', url: 'https://devblogs.microsoft.com/agent-framework/feed/' },
+
   // arXiv firehoses: high volume, low hit rate. prefilter triages by
   // title+abstract so only papers relevant to the taxonomy are ingested.
   { slug: 'arxiv-cs-lg', url: 'http://export.arxiv.org/rss/cs.LG', prefilter: true },
