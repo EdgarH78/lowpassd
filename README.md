@@ -2,7 +2,7 @@
 
 A high-signal AI knowledge wiki, compiled automatically by Gemini from RSS feeds.
 
-lowpassd ingests AI/ML news and research from a curated set of feeds, uses Gemini to sort each article into a fixed topic taxonomy, and continuously rewrites a cross-linked Markdown wiki — plus a daily "newspaper" digest and a chat agent that navigates the wiki for you. It's a low-pass filter on the AI firehose: only the signal relevant to a Staff Engineer building with and on top of AI makes it through.
+lowpassd ingests AI/ML news and research from a curated set of feeds, uses Gemini to sort each article into a fixed topic taxonomy, and continuously rewrites a cross-linked Markdown wiki — plus a daily "newspaper" digest and a chat agent that navigates the wiki for you. It's a low-pass filter on the AI firehose: only the signal relevant to software engineers building with and on top of AI makes it through.
 
 **Live:** [theforgerealm.com/lowpassd](https://theforgerealm.com/lowpassd)
 
