@@ -13,11 +13,16 @@ function num(v: string | undefined, fallback: number): number {
 
 export const config = {
   storage: {
-    // In prod, the Storage client authenticates as the Cloud Run runtime
-    // service account via ADC. Locally, STORAGE_EMULATOR_HOST points the
-    // client at the fake-gcs-server container (no credentials needed).
+    // Two backends behind one storage API. Locally, S3_ENDPOINT points at the
+    // MinIO container (docker-compose) and the S3-compatible client is used.
+    // In prod S3_ENDPOINT is unset, so storage falls back to native GCS,
+    // authenticating keylessly as the Cloud Run runtime service account via ADC.
+    s3Endpoint: process.env.S3_ENDPOINT,
+    s3Region: process.env.S3_REGION ?? 'us-east-1',
+    s3AccessKey: process.env.S3_ACCESS_KEY ?? 'lowpassd',
+    s3SecretKey: process.env.S3_SECRET_KEY ?? 'lowpassd-secret',
+    s3ForcePathStyle: bool(process.env.S3_FORCE_PATH_STYLE, true),
     projectId: process.env.GOOGLE_CLOUD_PROJECT,
-    emulatorHost: process.env.STORAGE_EMULATOR_HOST,
     buckets: {
       raw: process.env.BUCKET_RAW ?? 'lowpassd-raw',
       archive: process.env.BUCKET_ARCHIVE ?? 'lowpassd-archive',

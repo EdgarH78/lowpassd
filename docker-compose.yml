@@ -1,38 +1,45 @@
 services:
-  gcs:
-    # Local GCS emulator. The app's @google-cloud/storage client talks to this
-    # via STORAGE_EMULATOR_HOST; in prod it uses real GCS via the runtime SA.
-    image: fsouza/fake-gcs-server:latest
-    command: ["-scheme", "http", "-host", "0.0.0.0", "-port", "4443", "-public-host", "gcs:4443"]
+  minio:
+    # Local S3-compatible storage. The app talks to this via the S3 client when
+    # S3_ENDPOINT is set; in prod S3_ENDPOINT is unset and the app uses native
+    # GCS via the Cloud Run runtime service account.
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
     ports:
-      - "4443:4443"
+      # Host ports shifted off the default 9000/9001 to avoid collision with AtlasForge.
+      - "9100:9000"
+      - "9101:9001"
+    environment:
+      MINIO_ROOT_USER: lowpassd
+      MINIO_ROOT_PASSWORD: lowpassd-secret
     volumes:
-      - lowpassd-gcs:/storage
+      - lowpassd-minio:/data
 
-  gcs-init:
-    image: curlimages/curl:latest
+  minio-init:
+    image: minio/mc:latest
     depends_on:
-      - gcs
+      - minio
     entrypoint:
       - sh
       - -c
       - |
-        until curl -sf http://gcs:4443/storage/v1/b >/dev/null 2>&1; do
-          echo "waiting for fake-gcs-server..."; sleep 1;
+        until mc alias set local http://minio:9000 lowpassd lowpassd-secret >/dev/null 2>&1; do
+          echo "waiting for minio..."; sleep 1;
         done;
         for b in lowpassd-raw lowpassd-archive lowpassd-wiki; do
-          curl -s -X POST "http://gcs:4443/storage/v1/b?project=lowpassd-local" \
-            -H "Content-Type: application/json" -d "{\"name\":\"$$b\"}" >/dev/null;
+          mc mb -p "local/$$b" || true;
         done;
-        echo "buckets ready";
 
   lowpassd:
     build: .
     ports:
       - "8080:8080"
     environment:
-      GOOGLE_CLOUD_PROJECT: lowpassd-local
-      STORAGE_EMULATOR_HOST: http://gcs:4443
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: lowpassd
+      S3_SECRET_KEY: lowpassd-secret
+      S3_FORCE_PATH_STYLE: "true"
       BUCKET_RAW: lowpassd-raw
       BUCKET_ARCHIVE: lowpassd-archive
       BUCKET_WIKI: lowpassd-wiki
@@ -44,8 +51,8 @@ services:
       RUN_ON_START: ${RUN_ON_START:-true}
       PORT: "8080"
     depends_on:
-      - gcs-init
+      - minio-init
     restart: unless-stopped
 
 volumes:
-  lowpassd-gcs:
+  lowpassd-minio:

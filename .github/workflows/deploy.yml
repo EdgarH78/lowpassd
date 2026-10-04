@@ -1,8 +1,10 @@
 name: deploy
 
+# Auto-deploy disabled 2026-08-18: lowpassd was shut down to stop recurring cost.
+# The Cloud Run service, Cloud Scheduler job and Artifact Registry repo were deleted.
+# Re-enable by restoring the `push` trigger below (and recreating the AR repo).
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
